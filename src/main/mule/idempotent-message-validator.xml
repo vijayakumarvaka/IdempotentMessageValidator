@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="a1f2d338-0401-44cc-9bbc-8faae4b1e94c" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<os:object-store name="Object_store_Persistent" doc:name="Object store" doc:id="70244c6f-7ac4-4ae6-a72d-6b7c70199cb5" maxEntries="100" entryTtl="2" expirationInterval="2" expirationIntervalUnit="SECONDS" entryTtlUnit="MINUTES"/>
+	
+	<os:object-store name="Object_store_Transient" doc:name="Object store" doc:id="31c67cc7-39c6-450d-ba17-d9255e0dfbb4" persistent="false" entryTtl="2" expirationInterval="2" expirationIntervalUnit="SECONDS" entryTtlUnit="MINUTES"/>
+	<flow name="idempotent-message-validator_Transient_OS">
+  <http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="/hello/transientos"/>
+  <logger level="INFO" doc:name="Print Employee Id" doc:id="7827ccf2-93e4-483d-919a-7cfc6940082a" message="#[payload.employeeId]" />
+		<logger level="INFO" doc:name="Print correlationId" doc:id="5747e322-2ca2-4626-bfe9-5fc6b527c76c" message="#[correlationId]"/>
+		<idempotent-message-validator doc:name="Idempotent Message Validator" idExpression="#[payload.employeeId]" objectStore="Object_store_Transient"/>
+		<os:retrieve-all doc:name="Retrieve all from Transient OS" doc:id="af157f80-621c-40d9-b230-a5bded0b7b29" objectStore="Object_store_Transient" />
+		<set-payload value="#[output application/json&#10;---&#10;payload]" doc:name="Set Payload" doc:id="4fb2d78c-654d-486f-be74-3179c2d426ec" />
+</flow>
+
+<flow name="idempotent-message-validator_Persistent_OS">
+  <http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="/hello/persistentos"/>
+  <logger level="INFO" doc:name="Print Employee Id" doc:id="ed4ce25c-8cde-4a9a-a36d-d6179a97ed67" message="#[payload.employeeId]" />
+		<logger level="INFO" doc:name="Print correlationId" doc:id="c083104e-ee1d-4553-be6c-0db1e4d16a31" message="#[correlationId]"/>
+		<idempotent-message-validator doc:name="Idempotent Message Validator" idExpression="#[%dw 2.0&#10;      output text/plain&#10;      import dw::Crypto&#10;      ---&#10;      Crypto::hashWith(payload.employeeId,'MD5')]" objectStore="Object_store_Persistent">
+  </idempotent-message-validator>
+		<os:retrieve-all doc:name="Retrieve all from Persistent OS" doc:id="63a5c02f-5c71-4cf5-b76a-87ada993d0f3" objectStore="Object_store_Persistent" />
+		<set-payload value="#[output application/json&#10;---&#10;payload]" doc:name="Set Payload" doc:id="92697287-6f46-483d-b7b4-2c2a102d3fac" />
+
+</flow>
+	<flow name="idempotent-message-validator_Persistent_OS_Whole_Payload" doc:id="4ee9073c-3346-4935-8144-f31d4a1f4b28" >
+		<http:listener doc:name="Listener" doc:id="9022de88-7bbe-4751-b1f0-b9d7a2d8e6b4" config-ref="HTTP_Listener_config" path="/hello/persistentos/completefile" />
+		<logger level="INFO" doc:name="Print Employee Id" doc:id="2af2e923-1738-46a2-9b6a-1c1ae0c09c21" message="#[payload.employeeId]" />
+		<logger level="INFO" doc:name="Print correlationId" doc:id="04045965-b743-4665-b445-94dc99dbe6d5" message="#[correlationId]" />
+		<ee:transform doc:name="Converting the input payload to binary value" doc:id="921bf66b-f0bd-4169-8432-8dae8a4a6f2d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json
+---
+toBase64(write(payload))
+//To convert whole input payload to a binary string value]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<idempotent-message-validator doc:name="Idempotent Message Validator" doc:id="f155526e-ed69-41e2-adb0-71051b85acc0" idExpression="#[%dw 2.0&#10;      output text/plain&#10;      import dw::Crypto&#10;      ---&#10;      Crypto::hashWith(payload,'MD5')]" objectStore="Object_store_Persistent" />
+		<os:retrieve-all doc:name="Retrieve all from Persistent OS" doc:id="49617e2f-afe1-44d6-913d-b1fdf6994863" objectStore="Object_store_Persistent" />
+		<set-payload value="#[output application/json&#10;---&#10;payload]" doc:name="Set Payload" doc:id="c95d7ae6-f665-4f71-bcac-b1ac46408359" />
+	</flow>
+</mule>
